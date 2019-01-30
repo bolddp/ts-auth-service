@@ -53,7 +53,7 @@ const toAuthError = (error) => {
   }
 }
 
-export class AuthService implements AuthService {
+export class AwsAuthService implements AwsAuthService {
 
   userRepository: UserRepository;
   config: AwsAuthServiceConfig;

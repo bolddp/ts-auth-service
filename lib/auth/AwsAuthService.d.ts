@@ -4,7 +4,7 @@ import { SignupData } from "../SignupData";
 import { UserSession } from "../user/UserSession";
 import { LoginData } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
-export declare class AuthService implements AuthService {
+export declare class AwsAuthService implements AwsAuthService {
     userRepository: UserRepository;
     config: AwsAuthServiceConfig;
     jwkPems: Map<string, any>;
