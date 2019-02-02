@@ -12,7 +12,7 @@
     "aws-sdk": "^2.395.0",
     "express": "^4.16.4",
     "jsonwebtoken": "^8.4.0",
-    "ts-common-server": "github:bolddp/ts-common-server#1",
+    "ts-common-server": "github:bolddp/ts-common-server#2",
     "uuid": "^3.3.2"
   },
   "devDependencies": {
