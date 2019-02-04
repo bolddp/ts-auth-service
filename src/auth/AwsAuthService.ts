@@ -46,7 +46,7 @@ export class AwsAuthService implements AwsAuthService {
     this.buildJwkPems(this.config.publicCognitoKeys);
   }
 
-private buildJwkPems(keys: AwsCognitoPublicKey[]) {
+  private buildJwkPems(keys: AwsCognitoPublicKey[]) {
     this.jwkPems = new Map();
     keys.forEach(key => this.jwkPems.set(key.kid, jwkToPem(key)));
   }
@@ -141,12 +141,12 @@ private buildJwkPems(keys: AwsCognitoPublicKey[]) {
         }
       });
     })
-    .then(userName => this.userRepository.put(<User> {
-      userName,
-      email: signupData.email,
-      firstName: signupData.firstName,
-      lastName: signupData.lastName
-    }));
+      .then(userName => this.userRepository.put(<User>{
+        userName,
+        email: signupData.email,
+        firstName: signupData.firstName,
+        lastName: signupData.lastName
+      }));
   }
 
   refresh(authHeader: string): Promise<UserSession> {
@@ -205,7 +205,7 @@ private buildJwkPems(keys: AwsCognitoPublicKey[]) {
   }
 
   deleteUser(userName: string): Promise<void> {
-    const idProvider = new AWS.CognitoIdentityServiceProvider({region: this.config.region});
+    const idProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.region });
     const params = {
       UserPoolId: this.config.userPoolId,
       Username: userName
