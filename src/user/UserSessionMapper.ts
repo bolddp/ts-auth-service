@@ -12,7 +12,8 @@ export default class UserSessionMapper {
       lastName: idPayload['family_name'],
       groups: idPayload['cognito:groups'] || [],
       tokenExpiry: idPayload['exp'],
-      accessToken: session.getAccessToken().getJwtToken()
+      accessToken: session.getAccessToken().getJwtToken(),
+      idToken: session.getIdToken().getJwtToken()
     }
   }
 }

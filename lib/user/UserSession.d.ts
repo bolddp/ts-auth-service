@@ -7,4 +7,5 @@ export interface UserSession {
     groups: string[];
     tokenExpiry: number;
     accessToken: string;
+    idToken: string;
 }

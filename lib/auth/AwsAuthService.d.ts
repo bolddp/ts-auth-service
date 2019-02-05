@@ -1,4 +1,4 @@
-import { AwsAuthServiceConfig } from "./AwsAuthServiceConfig";
+import { AwsAuthServiceConfig } from './AwsAuthServiceConfig';
 import { TokenInfo } from "../TokenInfo";
 import { SignupData } from "../SignupData";
 import { UserSession } from "../user/UserSession";

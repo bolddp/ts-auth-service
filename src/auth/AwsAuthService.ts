@@ -3,7 +3,7 @@ import * as uuidv4 from 'uuid/v4';
 import { AwsCognitoPublicKey } from '../AwsCognitoPublicKey';
 import * as AmazonCognitoIdentity from 'amazon-cognito-identity-js';
 import { AuthError } from "./AuthError";
-import { AwsAuthServiceConfig } from "./AwsAuthServiceConfig";
+import { AwsAuthServiceConfig } from './AwsAuthServiceConfig';
 import { TokenInfo, UserGroup } from "../TokenInfo";
 import { SignupData } from "../SignupData";
 import { User } from "../user/User";
