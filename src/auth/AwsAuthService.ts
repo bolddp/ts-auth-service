@@ -12,6 +12,7 @@ import UserMapper from "../user/UserMapper";
 import UserSessionMapper from "../user/UserSessionMapper";
 import { LoginData } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
+import { AuthService } from './AuthService';
 
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
@@ -34,7 +35,7 @@ const toAuthError = (error) => {
   }
 }
 
-export class AwsAuthService implements AwsAuthService {
+export class AwsAuthService implements AuthService {
 
   userRepository: UserRepository;
   config: AwsAuthServiceConfig;
@@ -112,6 +113,17 @@ export class AwsAuthService implements AwsAuthService {
       });
     }
     return Promise.resolve(<TokenInfo>{ userName, isValid, isExpired, group: userGroup });
+  }
+
+  verifyAuthorizedJwt(header: string): Promise<TokenInfo> {
+    return this.verifyJwt(header)
+      .then(tokenInfo => {
+        if (tokenInfo.group == UserGroup.Guest) {
+          return Promise.reject(AuthError.Unauthorized);
+        } else {
+          return Promise.resolve(tokenInfo);
+        }
+      })
   }
 
   signup(signupData: SignupData): Promise<void> {

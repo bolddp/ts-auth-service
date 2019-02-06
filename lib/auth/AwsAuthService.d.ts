@@ -4,7 +4,8 @@ import { SignupData } from "../SignupData";
 import { UserSession } from "../user/UserSession";
 import { LoginData } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
-export declare class AwsAuthService implements AwsAuthService {
+import { AuthService } from './AuthService';
+export declare class AwsAuthService implements AuthService {
     userRepository: UserRepository;
     config: AwsAuthServiceConfig;
     jwkPems: Map<string, any>;
@@ -25,6 +26,7 @@ export declare class AwsAuthService implements AwsAuthService {
      * It also puts the token in a UserGroup: Guest, User or SiteAdmin.
      */
     verifyJwt(header: string): Promise<TokenInfo>;
+    verifyAuthorizedJwt(header: string): Promise<TokenInfo>;
     signup(signupData: SignupData): Promise<void>;
     refresh(authHeader: string): Promise<UserSession>;
     login(loginData: LoginData): Promise<UserSession>;

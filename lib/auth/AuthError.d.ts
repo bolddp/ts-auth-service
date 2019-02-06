@@ -1,4 +1,5 @@
 export declare class AuthError extends Error {
+    static Unauthorized: AuthError;
     static SignupFailed: AuthError;
     static SignupUsernameExistsAlready: AuthError;
     static SignupInvalidPassword: AuthError;

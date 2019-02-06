@@ -1,5 +1,5 @@
 export class AuthError extends Error {
-  // static Unauthorized: AuthError = new AuthError(403, 'Unauthorized');
+  static Unauthorized: AuthError = new AuthError(403, 'Unauthorized');
   static SignupFailed: AuthError = new AuthError(9000, 'Signup failed');
   static SignupUsernameExistsAlready: AuthError = new AuthError(9001, 'User name already exists');
   static SignupInvalidPassword: AuthError = new AuthError(9002, 'Invalid password');
