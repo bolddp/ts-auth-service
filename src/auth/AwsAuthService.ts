@@ -45,6 +45,7 @@ export class AwsAuthService implements AuthService {
     this.userRepository = userRepository;
     this.config = config;
     this.buildJwkPems(this.config.publicCognitoKeys);
+    this.getJwkPem = this.getJwkPem.bind(this);
   }
 
   private buildJwkPems(keys: AwsCognitoPublicKey[]) {
