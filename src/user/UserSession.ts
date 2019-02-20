@@ -8,4 +8,5 @@ export interface UserSession {
   tokenExpiry: number;
   accessToken: string;
   idToken: string;
+  cognitoIdentityId?: string;
 }

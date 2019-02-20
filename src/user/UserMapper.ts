@@ -2,14 +2,15 @@ import { CognitoUserSession } from 'amazon-cognito-identity-js';
 import { User } from './User';
 
 export default class UserMapper {
-  static fromCognitoUserSession(session: CognitoUserSession) {
+  static fromCognitoUserSession(cognitoIdentityId: string, session: CognitoUserSession) {
     const idPayload = session.getIdToken().decodePayload();
     return <User> {
       userName: idPayload['sub'],
       email: idPayload['email'],
       firstName: idPayload['given_name'],
       lastName: idPayload['family_name'],
-      refreshToken: session.getRefreshToken().getToken()
+      refreshToken: session.getRefreshToken().getToken(),
+      cognitoIdentityId
     };
   }
 }

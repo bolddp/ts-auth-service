@@ -78,6 +78,13 @@ export class AwsAuthService implements AuthService {
     return new AmazonCognitoIdentity.CognitoUser(userData);
   }
 
+  private getCognitoIdentityId(session: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
+    if (!this.config.retrieveAwsIdentityId) {
+      return Promise.resolve(undefined);
+    }
+    // TODO ! Fortsätt här!
+  }
+
   /**
    * Verifies a JSON Web token and compiles information about it in a TokenInfo
    * instance. This is information regarding it's userName, if its valid or expired etc.
@@ -177,9 +184,10 @@ export class AwsAuthService implements AuthService {
                 if (err) {
                   console.log(`AWS Cognito refresh error: ${JSON.stringify(err)}`);
                   reject(toAuthError(err));
+                } else {
+                  console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
+                  resolve(session);
                 }
-                console.log(`Authentication success result: ${JSON.stringify(session)}`);
-                resolve(session);
               })
             })
               .then((cognitoUserSession: AmazonCognitoIdentity.CognitoUserSession) => {
@@ -202,7 +210,7 @@ export class AwsAuthService implements AuthService {
     return new Promise((resolve, reject) => {
       cognitoUser.authenticateUser(authenticationDetails, {
         onSuccess: (session: AmazonCognitoIdentity.CognitoUserSession) => {
-          console.log(`Authentication success result: ${JSON.stringify(session)}`);
+          console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
           resolve(session);
         },
         onFailure: function (err) {
@@ -211,9 +219,10 @@ export class AwsAuthService implements AuthService {
         }
       });
     })
-      .then((cognitoUserSession: AmazonCognitoIdentity.CognitoUserSession) => {
-        return this.userRepository.put(UserMapper.fromCognitoUserSession(cognitoUserSession))
-          .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(cognitoUserSession)));
+      .then((session: AmazonCognitoIdentity.CognitoUserSession) => {
+        return this.getCognitoIdentityId(session)
+          .then(identityId => this.userRepository.put(UserMapper.fromCognitoUserSession(identityId, session)))
+          .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(session)));
       });
   }
 

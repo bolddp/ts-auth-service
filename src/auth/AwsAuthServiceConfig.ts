@@ -5,4 +5,5 @@ export interface AwsAuthServiceConfig {
   clientId: string;
   region: string;
   publicCognitoKeys: AwsCognitoPublicKey[];
+  retrieveAwsIdentityId: boolean;
 }
