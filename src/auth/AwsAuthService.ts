@@ -13,6 +13,7 @@ import UserSessionMapper from "../user/UserSessionMapper";
 import { LoginData } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
 import { AuthService } from './AuthService';
+import { AwsCognitoIdentityIdProvider } from './AwsCognitoIdentityIdProvider';
 
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
@@ -35,7 +36,7 @@ const toAuthError = (error) => {
   }
 }
 
-export class AwsAuthService implements AuthService {
+export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider {
 
   userRepository: UserRepository;
   config: AwsAuthServiceConfig;
@@ -78,11 +79,27 @@ export class AwsAuthService implements AuthService {
     return new AmazonCognitoIdentity.CognitoUser(userData);
   }
 
-  private getCognitoIdentityId(session: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
-    if (!this.config.retrieveAwsIdentityId) {
-      return Promise.resolve(undefined);
+  private getCognitoIdentityId(user: User, userSession: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
+    if (user.cognitoIdentityId) {
+      return Promise.resolve(user.cognitoIdentityId);
+    } else {
+      return new Promise((resolve, reject) => {
+        const params = {
+          IdentityPoolId: this.config.identityPoolId,
+          Logins: {
+            [`cognito-idp.${this.config.region}.amazonaws.com/${this.config.userPoolId}`]: userSession.getIdToken().getJwtToken()
+          }
+        };
+        const cognitoIdentity = new AWS.CognitoIdentity({ apiVersion: '2014-06-30', region: this.config.region });
+        cognitoIdentity.getId(params, function (err, response) {
+          if (err) {
+            reject(err)
+          } else {
+            resolve(response.IdentityId);
+          }
+        });
+      });
     }
-    // TODO ! Fortsätt här!
   }
 
   /**
@@ -191,7 +208,8 @@ export class AwsAuthService implements AuthService {
               })
             })
               .then((cognitoUserSession: AmazonCognitoIdentity.CognitoUserSession) => {
-                return this.userRepository.put(UserMapper.fromCognitoUserSession(cognitoUserSession))
+                return this.getCognitoIdentityId(user, cognitoUserSession)
+                  .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(cognitoUserSession, cognitoIdentityId)))
                   .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(cognitoUserSession)));
               });
           })
@@ -220,8 +238,8 @@ export class AwsAuthService implements AuthService {
       });
     })
       .then((session: AmazonCognitoIdentity.CognitoUserSession) => {
-        return this.getCognitoIdentityId(session)
-          .then(identityId => this.userRepository.put(UserMapper.fromCognitoUserSession(identityId, session)))
+        return this.getCognitoIdentityId(session.getIdToken().payload.sub, session)
+          .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(session, cognitoIdentityId)))
           .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(session)));
       });
   }
@@ -235,5 +253,15 @@ export class AwsAuthService implements AuthService {
     return idProvider.adminDeleteUser(params).promise()
       .then(() => Promise.resolve())
       .catch(error => Promise.reject(toAuthError(error)));
+  }
+
+  getIdentityIdByUser(userName: string): Promise<string> {
+    return this.userRepository.getByUserName(userName)
+      .then(user => {
+        if (!user) {
+          return Promise.reject(AuthError.UserNotFound);
+        }
+        return Promise.resolve(user.cognitoIdentityId);
+      });
   }
 }

@@ -5,7 +5,8 @@ import { UserSession } from "../user/UserSession";
 import { LoginData } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
 import { AuthService } from './AuthService';
-export declare class AwsAuthService implements AuthService {
+import { AwsCognitoIdentityIdProvider } from './AwsCognitoIdentityIdProvider';
+export declare class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider {
     userRepository: UserRepository;
     config: AwsAuthServiceConfig;
     jwkPems: Map<string, any>;
@@ -20,6 +21,7 @@ export declare class AwsAuthService implements AuthService {
      * Constructs a CognitoUser that is needed for login and token refresh.
      */
     private getCognitoUser;
+    private getCognitoIdentityId;
     /**
      * Verifies a JSON Web token and compiles information about it in a TokenInfo
      * instance. This is information regarding it's userName, if its valid or expired etc.
@@ -31,4 +33,5 @@ export declare class AwsAuthService implements AuthService {
     refresh(authHeader: string): Promise<UserSession>;
     login(loginData: LoginData): Promise<UserSession>;
     deleteUser(userName: string): Promise<void>;
+    getIdentityIdByUser(userName: string): Promise<string>;
 }

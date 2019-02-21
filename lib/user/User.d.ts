@@ -4,4 +4,5 @@ export interface User {
     firstName: string;
     lastName: string;
     refreshToken: string;
+    cognitoIdentityId?: string;
 }

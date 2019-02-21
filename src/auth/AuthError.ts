@@ -4,8 +4,8 @@ export class AuthError extends Error {
   static SignupUsernameExistsAlready: AuthError = new AuthError(9001, 'User name already exists');
   static SignupInvalidPassword: AuthError = new AuthError(9002, 'Invalid password');
   static LoginFailed: AuthError = new AuthError(9003, 'Invalid user name or password');
-  // static AuthTokenInvalid: AuthError = new AuthError(9004, 'Authorization token invalid');
   static RefreshTokenNotFound: AuthError = new AuthError(9005, 'Refresh token not found');
+  static UserNotFound: AuthError = new AuthError(9006, 'User not found');
 
   statusCode?: number;
 

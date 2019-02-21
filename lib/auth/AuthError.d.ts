@@ -5,6 +5,7 @@ export declare class AuthError extends Error {
     static SignupInvalidPassword: AuthError;
     static LoginFailed: AuthError;
     static RefreshTokenNotFound: AuthError;
+    static UserNotFound: AuthError;
     statusCode?: number;
     constructor(statusCode: number, message: string);
 }
