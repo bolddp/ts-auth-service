@@ -162,7 +162,6 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
 
     attributeList.push(
       new AmazonCognitoIdentity.CognitoUserAttribute({ Name: 'email', Value: signupData.email }),
-      new AmazonCognitoIdentity.CognitoUserAttribute({ Name: 'preferred_username', Value: uuidv4() }),
       new AmazonCognitoIdentity.CognitoUserAttribute({ Name: 'given_name', Value: signupData.firstName }),
       new AmazonCognitoIdentity.CognitoUserAttribute({ Name: 'family_name', Value: signupData.lastName })
     );
