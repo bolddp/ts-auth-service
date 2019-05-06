@@ -1,5 +1,4 @@
 import * as AWS from 'aws-sdk';
-import * as uuidv4 from 'uuid/v4';
 import { AwsCognitoPublicKey } from '../AwsCognitoPublicKey';
 import * as AmazonCognitoIdentity from 'amazon-cognito-identity-js';
 import { AuthError } from "./AuthError";
@@ -10,10 +9,14 @@ import { User } from "../user/User";
 import { UserSession } from "../user/UserSession";
 import UserMapper from "../user/UserMapper";
 import UserSessionMapper from "../user/UserSessionMapper";
-import { LoginData } from '../LoginData';
+import { LoginData, LoginProviderEnum } from '../LoginData';
 import { UserRepository } from '../user/UserRepository';
 import { AuthService } from './AuthService';
 import { AwsCognitoIdentityIdProvider } from './AwsCognitoIdentityIdProvider';
+import { LoginProvider } from '../login/LoginProvider';
+import { AwsCognitoLoginProvider } from '../login/AwsCognitoLoginProvider';
+import { FacebookLoginProvider } from '../login/FacebookLoginProvider';
+import { LoginProviderUser } from '../login/LoginProviderUser';
 
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
@@ -37,7 +40,8 @@ const toAuthError = (error) => {
 }
 
 export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider {
-
+  loginProviders: { [key: string]: LoginProvider };
+  identityServiceProvider: AWS.CognitoIdentityServiceProvider;
   userRepository: UserRepository;
   config: AwsAuthServiceConfig;
   jwkPems: Map<string, any>;
@@ -45,8 +49,13 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
   constructor(userRepository: UserRepository, config: AwsAuthServiceConfig) {
     this.userRepository = userRepository;
     this.config = config;
-    this.buildJwkPems(this.config.publicCognitoKeys);
+    this.buildJwkPems(this.config.cognito.publicCognitoKeys);
     this.getJwkPem = this.getJwkPem.bind(this);
+    this.identityServiceProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.cognito.region });
+    this.loginProviders = {
+      [LoginProviderEnum.AwsCognito]: new AwsCognitoLoginProvider(config.cognito),
+      [LoginProviderEnum.Facebook]: new FacebookLoginProvider(config.facebook)
+    }
   }
 
   private buildJwkPems(keys: AwsCognitoPublicKey[]) {
@@ -62,22 +71,22 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
     callback(null, this.jwkPems.get(header.kid));
   }
 
-  /**
-   * Constructs a CognitoUser that is needed for login and token refresh.
-   */
-  private getCognitoUser(userName: string): AmazonCognitoIdentity.CognitoUser {
-    const poolData: AmazonCognitoIdentity.ICognitoUserPoolData = {
-      UserPoolId: this.config.userPoolId,
-      ClientId: this.config.clientId
-    };
-    const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+  // /**
+  //  * Constructs a CognitoUser that is needed for login and token refresh.
+  //  */
+  // private getCognitoUser(userName: string): AmazonCognitoIdentity.CognitoUser {
+  //   const poolData: AmazonCognitoIdentity.ICognitoUserPoolData = {
+  //     UserPoolId: this.config.userPoolId,
+  //     ClientId: this.config.clientId
+  //   };
+  //   const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
 
-    const userData: AmazonCognitoIdentity.ICognitoUserData = {
-      Username: userName,
-      Pool: userPool
-    };
-    return new AmazonCognitoIdentity.CognitoUser(userData);
-  }
+  //   const userData: AmazonCognitoIdentity.ICognitoUserData = {
+  //     Username: userName,
+  //     Pool: userPool
+  //   };
+  //   return new AmazonCognitoIdentity.CognitoUser(userData);
+  // }
 
   private getCognitoIdentityId(user: User, userSession: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
     if (user.cognitoIdentityId) {
@@ -100,6 +109,44 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
         });
       });
     }
+  }
+
+  private async checkUserExists(user: LoginProviderUser): Promise<boolean> {
+    return await this.identityServiceProvider.adminGetUser({
+      UserPoolId: this.config.cognito.userPoolId,
+      Username: user.userName
+    }).promise().then(response => {
+      return true;
+    }).catch(error => {
+      if (error.code == 'UserNotFoundException') {
+        return false;
+      }
+      throw error;
+    });
+  }
+
+  private async createUser(user: LoginProviderUser): Promise<void> {
+    // First create the user
+    await this.identityServiceProvider.adminCreateUser({
+      UserPoolId: this.config.cognito.userPoolId,
+      Username: user.userName,
+      DesiredDeliveryMediums: ['EMAIL'],
+      ForceAliasCreation: false,
+      MessageAction: 'SUPPRESS',
+      TemporaryPassword: '!ItIsTemp01',
+      UserAttributes: [
+        { Name: 'email', Value: user.email },
+        { Name: 'given_name', Value: user.firstName },
+        { Name: 'family_name', Value: user.lastName }
+      ]
+    }).promise();
+    // Then set the corresponding permanent password
+    await this.identityServiceProvider.adminSetUserPassword({
+      UserPoolId: this.config.cognito.userPoolId,
+      Username: user.userName,
+      Password: user.permanentPassword,
+      Permanent: true
+    }).promise();
   }
 
   /**
@@ -153,8 +200,8 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
 
   signup(signupData: SignupData): Promise<void> {
     var poolData: AmazonCognitoIdentity.ICognitoUserPoolData = {
-      UserPoolId: this.config.userPoolId,
-      ClientId: this.config.clientId
+      UserPoolId: this.config.cognito.userPoolId,
+      ClientId: this.config.cognito.clientId
     };
     var userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
 
@@ -215,32 +262,51 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
       });
   }
 
-  login(loginData: LoginData): Promise<UserSession> {
-    const cognitoUser = this.getCognitoUser(loginData.userName);
+  async login(loginData: LoginData): Promise<UserSession> {
+    const loginProvider = this.loginProviders[loginData.loginProvider];
+    if (!loginProvider) {
+      throw AuthError.LoginFailed;
+    }
+    const loginProviderUser = await loginProvider.getUser(loginData);
+    // Make sure that non-AWS Cognito users are also added to Cognito the first time
+    if (loginData.loginProvider != LoginProviderEnum.AwsCognito) {
+      const userExists = await this.checkUserExists(loginProviderUser);
+      if (!userExists) {
+        await this.createUser(loginProviderUser);
+      }
+    }
 
-    const authenticationData: AmazonCognitoIdentity.IAuthenticationDetailsData = {
-      Username: loginData.userName,
-      Password: loginData.password
-    };
-    const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
+    ** // LoginProvider ska kanske endast anropas om det inte är en AwsCognito-inloggning,
+    // d.v.s. att koden som finns i AwsCognitoLoginProvider ska föras över hit eftersom
+    // den måste köras för att få en user session även när andra providers används...
 
-    return new Promise((resolve, reject) => {
-      cognitoUser.authenticateUser(authenticationDetails, {
-        onSuccess: (session: AmazonCognitoIdentity.CognitoUserSession) => {
-          console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
-          resolve(session);
-        },
-        onFailure: function (err) {
-          console.log(`AWS Cognito error: ${JSON.stringify(err)}`);
-          reject(toAuthError(err));
-        }
-      });
-    })
-      .then((session: AmazonCognitoIdentity.CognitoUserSession) => {
-        return this.getCognitoIdentityId(session.getIdToken().payload.sub, session)
-          .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(session, cognitoIdentityId)))
-          .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(session)));
-      });
+
+
+    // const cognitoUser = this.getCognitoUser(loginData.userName);
+
+    // const authenticationData: AmazonCognitoIdentity.IAuthenticationDetailsData = {
+    //   Username: loginData.userName,
+    //   Password: loginData.password
+    // };
+    // const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
+
+    // return new Promise((resolve, reject) => {
+    //   cognitoUser.authenticateUser(authenticationDetails, {
+    //     onSuccess: (session: AmazonCognitoIdentity.CognitoUserSession) => {
+    //       console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
+    //       resolve(session);
+    //     },
+    //     onFailure: function (err) {
+    //       console.log(`AWS Cognito error: ${JSON.stringify(err)}`);
+    //       reject(toAuthError(err));
+    //     }
+    //   });
+    // })
+    //   .then((session: AmazonCognitoIdentity.CognitoUserSession) => {
+    //     return this.getCognitoIdentityId(session.getIdToken().payload.sub, session)
+    //       .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(session, cognitoIdentityId)))
+    //       .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(session)));
+    //   });
   }
 
   deleteUser(userName: string): Promise<void> {

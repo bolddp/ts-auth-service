@@ -4,7 +4,8 @@
       "sourceMap": false,
       "outDir": "./lib",
       "target": "es6",
-      "lib": ["es6"],
+      "lib": ["es6", "dom"],
+      "types": ["node"],
       "declaration": true
   },
   "exclude": [

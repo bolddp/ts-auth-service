@@ -1,9 +1,20 @@
 import { AwsCognitoPublicKey } from '../AwsCognitoPublicKey';
 
-export interface AwsAuthServiceConfig {
+export interface CognitoConfig {
   userPoolId: string;
   clientId: string;
   region: string;
   publicCognitoKeys: AwsCognitoPublicKey[];
   identityPoolId: string;
+}
+
+export interface FacebookConfig {
+  appId: string;
+  appSecret: string;
+  appAccessToken: string;
+}
+
+export interface AwsAuthServiceConfig {
+  cognito: CognitoConfig,
+  facebook?: FacebookConfig
 }
