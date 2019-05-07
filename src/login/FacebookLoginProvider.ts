@@ -14,8 +14,9 @@ export class FacebookLoginProvider implements LoginProvider {
     this.config = config;
   }
 
-  private createPermanentPassword(userName: string): string {
-    return crypto.createHash('sha1').update(`fbpwd_${userName}`).digest('hex');
+  private createPermanentPassword(salt: string, userName: string): string {
+    const hash = crypto.createHash('sha1').update(`${salt}_${userName}`).digest('hex');
+    return `PWD_${hash}`;
   }
 
   async getUser(loginData: LoginData): Promise<LoginProviderUser> {
@@ -29,10 +30,10 @@ export class FacebookLoginProvider implements LoginProvider {
     const userInfo = await fetch(`https://graph.facebook.com/me?access_token=${token}&fields=id,email,first_name,last_name`)
       .then(response => response.json());
 
-    const userName = `${LoginProviderEnum.Facebook}_${longLivedTokenInfo.id}`;
+    const userName = `${LoginProviderEnum.Facebook}_${userInfo.id}`;
     return <LoginProviderUser>{
       userName,
-      permanentPassword: this.createPermanentPassword(userName),
+      permanentPassword: this.createPermanentPassword(this.config.passwordSalt, userName),
       loginProvider: LoginProviderEnum.Facebook,
       email: decodeURI(userInfo.email),
       firstName: decodeURI(userInfo.first_name),

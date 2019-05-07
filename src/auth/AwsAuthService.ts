@@ -17,6 +17,7 @@ import { LoginProvider } from '../login/LoginProvider';
 import { AwsCognitoLoginProvider } from '../login/AwsCognitoLoginProvider';
 import { FacebookLoginProvider } from '../login/FacebookLoginProvider';
 import { LoginProviderUser } from '../login/LoginProviderUser';
+import { CognitoUserSession } from 'amazon-cognito-identity-js';
 
 const jwt = require('jsonwebtoken');
 const jwkToPem = require('jwk-to-pem');
@@ -53,7 +54,6 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
     this.getJwkPem = this.getJwkPem.bind(this);
     this.identityServiceProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.cognito.region });
     this.loginProviders = {
-      [LoginProviderEnum.AwsCognito]: new AwsCognitoLoginProvider(config.cognito),
       [LoginProviderEnum.Facebook]: new FacebookLoginProvider(config.facebook)
     }
   }
@@ -71,50 +71,46 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
     callback(null, this.jwkPems.get(header.kid));
   }
 
-  // /**
-  //  * Constructs a CognitoUser that is needed for login and token refresh.
-  //  */
-  // private getCognitoUser(userName: string): AmazonCognitoIdentity.CognitoUser {
-  //   const poolData: AmazonCognitoIdentity.ICognitoUserPoolData = {
-  //     UserPoolId: this.config.userPoolId,
-  //     ClientId: this.config.clientId
-  //   };
-  //   const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+  /**
+   * Constructs a CognitoUser that is needed for login and token refresh.
+   */
+  private getCognitoUser(userName: string): AmazonCognitoIdentity.CognitoUser {
+    const poolData: AmazonCognitoIdentity.ICognitoUserPoolData = {
+      UserPoolId: this.config.cognito.userPoolId,
+      ClientId: this.config.cognito.clientId
+    };
+    const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
 
-  //   const userData: AmazonCognitoIdentity.ICognitoUserData = {
-  //     Username: userName,
-  //     Pool: userPool
-  //   };
-  //   return new AmazonCognitoIdentity.CognitoUser(userData);
-  // }
+    const userData: AmazonCognitoIdentity.ICognitoUserData = {
+      Username: userName,
+      Pool: userPool
+    };
+    return new AmazonCognitoIdentity.CognitoUser(userData);
+  }
 
-  private getCognitoIdentityId(user: User, userSession: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
-    if (user.cognitoIdentityId) {
-      return Promise.resolve(user.cognitoIdentityId);
-    } else {
-      return new Promise((resolve, reject) => {
-        const params = {
-          IdentityPoolId: this.config.identityPoolId,
-          Logins: {
-            [`cognito-idp.${this.config.region}.amazonaws.com/${this.config.userPoolId}`]: userSession.getIdToken().getJwtToken()
-          }
-        };
-        const cognitoIdentity = new AWS.CognitoIdentity({ apiVersion: '2014-06-30', region: this.config.region });
-        cognitoIdentity.getId(params, function (err, response) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(response.IdentityId);
-          }
-        });
+  private getCognitoIdentityId(userSession: AmazonCognitoIdentity.CognitoUserSession): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const params = {
+        IdentityPoolId: this.config.cognito.identityPoolId,
+        Logins: {
+          [`cognito-idp.${this.config.cognito.region}.amazonaws.com/${this.config.cognito.userPoolId}`]: userSession.getIdToken().getJwtToken()
+        }
+      };
+      const cognitoIdentity = new AWS.CognitoIdentity({ apiVersion: '2014-06-30', region: this.config.cognito.region });
+      cognitoIdentity.getId(params, function (err, response) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(response.IdentityId);
+        }
       });
-    }
+    });
   }
 
   private async checkUserExists(user: LoginProviderUser): Promise<boolean> {
     return await this.identityServiceProvider.adminGetUser({
       UserPoolId: this.config.cognito.userPoolId,
-      Username: user.userName
+      Username: user.email
     }).promise().then(response => {
       return true;
     }).catch(error => {
@@ -126,10 +122,10 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
   }
 
   private async createUser(user: LoginProviderUser): Promise<void> {
-    // First create the user
-    await this.identityServiceProvider.adminCreateUser({
+    // First create the user and capture its new user name
+    const userName = await this.identityServiceProvider.adminCreateUser({
       UserPoolId: this.config.cognito.userPoolId,
-      Username: user.userName,
+      Username: user.email,
       DesiredDeliveryMediums: ['EMAIL'],
       ForceAliasCreation: false,
       MessageAction: 'SUPPRESS',
@@ -139,11 +135,13 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
         { Name: 'given_name', Value: user.firstName },
         { Name: 'family_name', Value: user.lastName }
       ]
-    }).promise();
+    }).promise().then(rsp => {
+      return Promise.resolve(rsp.User.Username);
+    });
     // Then set the corresponding permanent password
     await this.identityServiceProvider.adminSetUserPassword({
       UserPoolId: this.config.cognito.userPoolId,
-      Username: user.userName,
+      Username: userName,
       Password: user.permanentPassword,
       Permanent: true
     }).promise();
@@ -232,87 +230,84 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
       }));
   }
 
-  refresh(authHeader: string): Promise<UserSession> {
-    return this.verifyJwt(authHeader)
-      .then(tokenInfo => {
-        return this.userRepository.getByUserName(tokenInfo.userName)
-          .then(user => {
-            if (!user) {
-              return Promise.reject(AuthError.RefreshTokenNotFound);
-            }
-            const cognitoUser = this.getCognitoUser(user.userName);
-            return new Promise((resolve, reject) => {
-              const refreshToken = new AmazonCognitoIdentity.CognitoRefreshToken({ RefreshToken: user.refreshToken });
-              cognitoUser.refreshSession(refreshToken, (err, session) => {
-                if (err) {
-                  console.log(`AWS Cognito refresh error: ${JSON.stringify(err)}`);
-                  reject(toAuthError(err));
-                } else {
-                  console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
-                  resolve(session);
-                }
-              })
-            })
-              .then((cognitoUserSession: AmazonCognitoIdentity.CognitoUserSession) => {
-                return this.getCognitoIdentityId(user, cognitoUserSession)
-                  .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(cognitoUserSession, cognitoIdentityId)))
-                  .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(cognitoUserSession)));
-              });
-          })
-      });
+  async refresh(authHeader: string): Promise<UserSession> {
+    const tokenInfo = await this.verifyJwt(authHeader);
+    const existingUser = await this.userRepository.getByUserName(tokenInfo.userName);
+    if (!existingUser) {
+      throw AuthError.RefreshTokenNotFound;
+    }
+
+    const cognitoUser = this.getCognitoUser(existingUser.userName);
+    const cognitoSession = await new Promise<AmazonCognitoIdentity.CognitoUserSession>((resolve, reject) => {
+      const refreshToken = new AmazonCognitoIdentity.CognitoRefreshToken({ RefreshToken: existingUser.refreshToken });
+      cognitoUser.refreshSession(refreshToken, (err, session) => {
+        if (err) {
+          console.log(`AWS Cognito refresh error: ${JSON.stringify(err)}`);
+          reject(toAuthError(err));
+        } else {
+          console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
+          resolve(session);
+        }
+      })
+    });
+
+    const refreshUser = UserMapper.fromCognitoUserSession(cognitoSession, existingUser.cognitoIdentityId);
+    this.userRepository.put(refreshUser);
+
+    return UserSessionMapper.fromCognitoUserSession(cognitoSession);
   }
 
   async login(loginData: LoginData): Promise<UserSession> {
-    const loginProvider = this.loginProviders[loginData.loginProvider];
-    if (!loginProvider) {
-      throw AuthError.LoginFailed;
-    }
-    const loginProviderUser = await loginProvider.getUser(loginData);
-    // Make sure that non-AWS Cognito users are also added to Cognito the first time
+    let userNameToUse = loginData.userName;
+    let passwordToUse = loginData.password;
     if (loginData.loginProvider != LoginProviderEnum.AwsCognito) {
+      const loginProvider = this.loginProviders[loginData.loginProvider];
+      if (!loginProvider) {
+        throw AuthError.LoginFailed;
+      }
+      const loginProviderUser = await loginProvider.getUser(loginData);
       const userExists = await this.checkUserExists(loginProviderUser);
       if (!userExists) {
         await this.createUser(loginProviderUser);
       }
+      userNameToUse = loginProviderUser.email;
+      passwordToUse = loginProviderUser.permanentPassword;
     }
+    const cognitoUser = this.getCognitoUser(userNameToUse);
 
-    ** // LoginProvider ska kanske endast anropas om det inte är en AwsCognito-inloggning,
-    // d.v.s. att koden som finns i AwsCognitoLoginProvider ska föras över hit eftersom
-    // den måste köras för att få en user session även när andra providers används...
+    const authenticationData: AmazonCognitoIdentity.IAuthenticationDetailsData = {
+      Username: userNameToUse,
+      Password: passwordToUse
+    };
+    const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
 
+    const cognitoSession = await new Promise<AmazonCognitoIdentity.CognitoUserSession>((resolve, reject) => {
+      cognitoUser.authenticateUser(authenticationDetails, {
+        onSuccess: (session: AmazonCognitoIdentity.CognitoUserSession) => {
+          console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
+          resolve(session);
+        },
+        onFailure: function (err) {
+          console.log(`AWS Cognito error: ${JSON.stringify(err)}`);
+          reject(toAuthError(err));
+        }
+      });
+    });
+    const loginUser = UserMapper.fromCognitoUserSession(cognitoSession);
+    const existingUser = await this.userRepository.getByUserName(loginUser.userName);
+    if (!existingUser) {
+      loginUser.cognitoIdentityId = await this.getCognitoIdentityId(cognitoSession);
+    }
+    // Overwrite user each time since data may have changed (e.g. new name on Facebook)
+    await this.userRepository.put(loginUser);
 
-
-    // const cognitoUser = this.getCognitoUser(loginData.userName);
-
-    // const authenticationData: AmazonCognitoIdentity.IAuthenticationDetailsData = {
-    //   Username: loginData.userName,
-    //   Password: loginData.password
-    // };
-    // const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
-
-    // return new Promise((resolve, reject) => {
-    //   cognitoUser.authenticateUser(authenticationDetails, {
-    //     onSuccess: (session: AmazonCognitoIdentity.CognitoUserSession) => {
-    //       console.log(`Authentication succeeded (user: ${session.getIdToken().payload.sub})`);
-    //       resolve(session);
-    //     },
-    //     onFailure: function (err) {
-    //       console.log(`AWS Cognito error: ${JSON.stringify(err)}`);
-    //       reject(toAuthError(err));
-    //     }
-    //   });
-    // })
-    //   .then((session: AmazonCognitoIdentity.CognitoUserSession) => {
-    //     return this.getCognitoIdentityId(session.getIdToken().payload.sub, session)
-    //       .then(cognitoIdentityId => this.userRepository.put(UserMapper.fromCognitoUserSession(session, cognitoIdentityId)))
-    //       .then(() => Promise.resolve(UserSessionMapper.fromCognitoUserSession(session)));
-    //   });
+    return UserSessionMapper.fromCognitoUserSession(cognitoSession);
   }
 
   deleteUser(userName: string): Promise<void> {
-    const idProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.region });
+    const idProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.cognito.region });
     const params = {
-      UserPoolId: this.config.userPoolId,
+      UserPoolId: this.config.cognito.userPoolId,
       Username: userName
     }
     return idProvider.adminDeleteUser(params).promise()

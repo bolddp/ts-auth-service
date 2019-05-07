@@ -11,7 +11,7 @@ export interface CognitoConfig {
 export interface FacebookConfig {
   appId: string;
   appSecret: string;
-  appAccessToken: string;
+  passwordSalt: string;
 }
 
 export interface AwsAuthServiceConfig {
