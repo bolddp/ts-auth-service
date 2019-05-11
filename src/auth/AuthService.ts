@@ -15,5 +15,6 @@ export interface AuthService {
   signup(signupData: SignupData): Promise<void>;
   login(loginData: LoginData): Promise<UserSession>;
   refresh(authHeader: string): Promise<UserSession>;
+  logout(authHeader: string): Promise<void>;
   deleteUser(userName: string): Promise<void>;
 }

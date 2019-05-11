@@ -304,6 +304,19 @@ export class AwsAuthService implements AuthService, AwsCognitoIdentityIdProvider
     return UserSessionMapper.fromCognitoUserSession(cognitoSession);
   }
 
+  async logout(authHeader: string): Promise<void> {
+    const tokenInfo = await this.verifyJwt(authHeader);
+    const existingUser = await this.userRepository.getByUserName(tokenInfo.userName);
+    if (!existingUser) {
+      throw AuthError.RefreshTokenNotFound;
+    } else {
+      existingUser.refreshToken = undefined;
+      await this.userRepository.put(existingUser);
+    }
+    const cognitoUser = this.getCognitoUser(existingUser.userName);
+    cognitoUser.signOut();
+  }
+
   deleteUser(userName: string): Promise<void> {
     const idProvider = new AWS.CognitoIdentityServiceProvider({ region: this.config.cognito.region });
     const params = {

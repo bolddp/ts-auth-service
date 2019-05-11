@@ -1,6 +1,7 @@
 GIT_MSG=""
 
 tsc
+git add .
 git status
 
 if [ -z "$GIT_MSG" ]
@@ -16,6 +17,5 @@ then
   exit
 fi
 
-git add .
 git commit -m "$GIT_MSG"
 git push

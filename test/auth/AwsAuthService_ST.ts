@@ -30,6 +30,8 @@ describe('AwsAuthService', () => {
       accessToken: secret.facebook.accessToken
     });
 
+    console.log(`User session: ${JSON.stringify(userSession, null, 2)}`);
+
     expect(userSession.userName).to.equal('37f8fe94-9008-4524-a14e-0324fc7e6f4f');
     expect(userRepository.user.cognitoIdentityId).to.not.be.undefined;
     console.log(`Cognito identity id: ${userRepository.user.cognitoIdentityId}`);
